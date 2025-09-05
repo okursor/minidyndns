@@ -542,7 +542,14 @@ def handle_http_connection(connection)
 		throw :status, :not_authorized unless password == $db[user]["pass"]
 		
 		if params.include? "myip"
-			ip_as_string = CGI::unescape params["myip"].first
+			myip_value = params["myip"].first
+			if myip_value.nil?
+				# /?myip (without value) - use client IP
+				ip_as_string = proxy_client_ip || connection.peeraddr.last
+			else
+				# /?myip=value (with value, possibly empty) - use the provided value
+				ip_as_string = CGI::unescape myip_value
+			end
 		elsif proxy_client_ip
 			# If no myip parameter was provided but we got the client IP from an HTTP proxy use it
 			ip_as_string = proxy_client_ip
