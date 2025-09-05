@@ -540,7 +540,19 @@ def handle_http_connection(connection)
 		throw :status, :unchangable if $db[user]["pass"].to_s.strip == ""
 		# Make sure we're authenticated
 		throw :status, :not_authorized unless password == $db[user]["pass"]
-		
+		# NEU: GETIP-Endpunkt
+		if path == "/getip"
+			ip_as_string = proxy_client_ip || connection.peeraddr.last
+			log "#{log_prefix}: #{method} #{path_and_querystring} -> getip: #{ip_as_string}"
+			connection.write [
+				"HTTP/1.0 200 OK",
+				"Content-Type: text/plain",
+				"",
+				ip_as_string
+			].join("\r\n")
+			# Keine weitere Bearbeitung nötig, Verbindung wird gleich geschlossen
+			return
+		end		
 		if params.include? "myip"
 			myip_value = params["myip"].first
 			if myip_value.nil?
