@@ -486,7 +486,7 @@ def handle_http_connection(connection)
 	# This must not take longer that the configured number of seconds or we'll kill the connection.
 	# The idea is to handle all connections in a single thread (to avoid DOS attacks) but prevent
 	# stupid routers from keeping connections open for ever.
-	method, path_and_querystring, params, user, password, proxy_client_ip = nil, nil, nil, nil, nil, nil
+	method, path_and_querystring, path, params, user, password, proxy_client_ip, @getip_result = nil, nil, nil, nil, nil, nil, nil, nil
 	begin
 		# I know timeout() is considered harmful but we rely on the global interpreter lock anyway to
 		# synchronize access to $db. So the server only works correctly with interpreters that have a
@@ -533,6 +533,7 @@ def handle_http_connection(connection)
 	
 	# Process request
 	ip_as_string = nil
+	@getip_result = nil
 	status = catch :status do
 		# Mare sure we got auth information
 		throw :status, :not_authorized unless user and $db[user]
@@ -540,19 +541,14 @@ def handle_http_connection(connection)
 		throw :status, :unchangable if $db[user]["pass"].to_s.strip == ""
 		# Make sure we're authenticated
 		throw :status, :not_authorized unless password == $db[user]["pass"]
-		# NEU: GETIP-Endpunkt
+      
 		if path == "/getip"
-			ip_as_string = proxy_client_ip || connection.peeraddr.last
-			log "#{log_prefix}: #{method} #{path_and_querystring} -> getip: #{ip_as_string}"
-			connection.write [
-				"HTTP/1.0 200 OK",
-				"Content-Type: text/plain",
-				"",
-				ip_as_string
-			].join("\r\n")
-			# Keine weitere Bearbeitung nötig, Verbindung wird gleich geschlossen
-			return
-		end		
+		   ip_as_string = proxy_client_ip || connection.peeraddr.last
+		   log "#{log_prefix}: #{method} #{path_and_querystring} -> getip: #{ip_as_string}"
+		   @getip_result = ip_as_string
+	           throw :status, :getip
+      		end
+		
 		if params.include? "myip"
 			myip_value = params["myip"].first
 			if myip_value.nil?
@@ -600,6 +596,13 @@ def handle_http_connection(connection)
 	end
 	
 	case status
+	when :getip
+	  connection.write [
+	    "HTTP/1.0 200 OK",
+	    "Content-Type: text/plain",
+	    "",
+	    @getip_result
+	  ].join("\r\n")
 	when :ok
 		log "#{log_prefix}: #{method} #{path_and_querystring} -> updated #{user} to #{ip_as_string}"
 		connection.write [
